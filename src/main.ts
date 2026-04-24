@@ -215,15 +215,42 @@ async function runWorkflow(
 
 // login logs in to the Buf registry, storing credentials.
 async function login(bufPath: string, inputs: Inputs) {
-  const { token, domain } = inputs;
+  const { token, domain, login_retries, login_retry_delay_seconds } = inputs;
   if (token == "") {
     core.debug("Skipping login, no token provided");
     return;
   }
   core.debug(`Logging in to ${domain}`);
-  await exec.exec(bufPath, ["registry", "login", domain, "--token-stdin"], {
-    input: Buffer.from(token + "\n"),
-  });
+  const args = ["registry", "login", domain, "--token-stdin"];
+  const input = Buffer.from(`${token}\n`);
+  const maxAttempts = login_retries + 1;
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const exitCode = await exec.exec(bufPath, args, {
+        input,
+        silent: attempt < maxAttempts,
+      });
+      if (exitCode == 0) {
+        return;
+      }
+      lastError = new Error(`buf registry login exited with code ${exitCode}`);
+    } catch (error: unknown) {
+      lastError = error;
+    }
+    if (attempt == maxAttempts) {
+      break;
+    }
+    core.warning(
+      `Login to ${domain} failed (attempt ${attempt} of ${maxAttempts}). Retrying in ${login_retry_delay_seconds} seconds.`,
+    );
+    await new Promise((resolve) =>
+      setTimeout(resolve, login_retry_delay_seconds * 1000),
+    );
+  }
+  throw lastError instanceof Error
+    ? lastError
+    : new Error(`Failed to log in to ${domain}`);
 }
 
 // build runs the "buf build" step.

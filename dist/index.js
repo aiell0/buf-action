@@ -101817,6 +101817,8 @@ function getInputs() {
         token: lib_core.getInput("token") || getEnv("BUF_TOKEN"),
         checksum: lib_core.getInput("checksum"),
         domain: lib_core.getInput("domain"),
+        login_retries: getNonNegativeIntegerInput("login_retries", 5),
+        login_retry_delay_seconds: getNonNegativeIntegerInput("login_retry_delay_seconds", 10),
         setup_only: lib_core.getBooleanInput("setup_only"),
         pr_comment: lib_core.getBooleanInput("pr_comment"),
         github_actor: lib_core.getInput("github_actor"),
@@ -101864,6 +101866,18 @@ function getInputs() {
         inputs.archive_labels.push(event.ref);
     }
     return inputs;
+}
+function getNonNegativeIntegerInput(name, defaultValue) {
+    const value = lib_core.getInput(name);
+    if (value === "") {
+        return defaultValue;
+    }
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed) || parsed < 0) {
+        lib_core.warning(`Invalid value for ${name}: ${value}. Expected a non-negative integer, using default ${defaultValue}.`);
+        return defaultValue;
+    }
+    return parsed;
 }
 // getEnv returns the case insensitive value of the environment variable.
 // Prefers the lowercase version of the variable if it exists.
@@ -106081,15 +106095,39 @@ async function runWorkflow(bufPath, inputs, moduleNames) {
 }
 // login logs in to the Buf registry, storing credentials.
 async function login(bufPath, inputs) {
-    const { token, domain } = inputs;
+    const { token, domain, login_retries, login_retry_delay_seconds } = inputs;
     if (token == "") {
         lib_core.debug("Skipping login, no token provided");
         return;
     }
     lib_core.debug(`Logging in to ${domain}`);
-    await lib_exec.exec(bufPath, ["registry", "login", domain, "--token-stdin"], {
-        input: Buffer.from(token + "\n"),
-    });
+    const args = ["registry", "login", domain, "--token-stdin"];
+    const input = Buffer.from(`${token}\n`);
+    const maxAttempts = login_retries + 1;
+    let lastError;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+            const exitCode = await lib_exec.exec(bufPath, args, {
+                input,
+                silent: attempt < maxAttempts,
+            });
+            if (exitCode == 0) {
+                return;
+            }
+            lastError = new Error(`buf registry login exited with code ${exitCode}`);
+        }
+        catch (error) {
+            lastError = error;
+        }
+        if (attempt == maxAttempts) {
+            break;
+        }
+        lib_core.warning(`Login to ${domain} failed (attempt ${attempt} of ${maxAttempts}). Retrying in ${login_retry_delay_seconds} seconds.`);
+        await new Promise((resolve) => setTimeout(resolve, login_retry_delay_seconds * 1000));
+    }
+    throw lastError instanceof Error
+        ? lastError
+        : new Error(`Failed to log in to ${domain}`);
 }
 // build runs the "buf build" step.
 async function build(bufPath, inputs) {

@@ -44,6 +44,18 @@ This default configuration:
 -   Runs all Buf checks (`build`, `lint`, `format`, and `breaking`), posting a [summary comment](https://buf.build/docs/bsr/ci-cd/github-actions/#configure-summary-comment) for any pull request.
 -   Archives corresponding [labels](https://buf.build/docs/bsr/commits-labels/#labels) in the BSR when you delete a Git branch or tag.
 
+If BSR login intermittently fails because the registry is slow to respond, you can tune the login retry behavior:
+
+```yaml
+      - uses: bufbuild/buf-action@v1
+        with:
+          token: ${{ secrets.BUF_TOKEN }}
+          login_retries: 5
+          login_retry_delay_seconds: 10
+```
+
+`login_retries` counts retries after the initial login attempt. `login_retries` and `login_retry_delay_seconds` default to `5` and `10` respectively.
+
 ## Documentation
 
 For comprehensive configuration options, advanced workflows, and detailed examples, see the [Buf GitHub Action Documentation](https://buf.build/docs/bsr/ci-cd/github-actions).

@@ -60470,6 +60470,8 @@ function getInputs() {
         token: core.getInput("token") || getEnv("BUF_TOKEN"),
         checksum: core.getInput("checksum"),
         domain: core.getInput("domain"),
+        login_retries: getNonNegativeIntegerInput("login_retries", 5),
+        login_retry_delay_seconds: getNonNegativeIntegerInput("login_retry_delay_seconds", 10),
         setup_only: core.getBooleanInput("setup_only"),
         pr_comment: core.getBooleanInput("pr_comment"),
         github_actor: core.getInput("github_actor"),
@@ -60517,6 +60519,18 @@ function getInputs() {
         inputs.archive_labels.push(event.ref);
     }
     return inputs;
+}
+function getNonNegativeIntegerInput(name, defaultValue) {
+    const value = core.getInput(name);
+    if (value === "") {
+        return defaultValue;
+    }
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed) || parsed < 0) {
+        core.warning(`Invalid value for ${name}: ${value}. Expected a non-negative integer, using default ${defaultValue}.`);
+        return defaultValue;
+    }
+    return parsed;
 }
 // getEnv returns the case insensitive value of the environment variable.
 // Prefers the lowercase version of the variable if it exists.

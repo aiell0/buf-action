@@ -26,6 +26,8 @@ export interface Inputs {
   checksum: string;
   token: string;
   domain: string;
+  login_retries: number;
+  login_retry_delay_seconds: number;
   setup_only: boolean;
   pr_comment: boolean;
   github_actor: string;
@@ -56,6 +58,11 @@ export function getInputs(): Inputs {
     token: core.getInput("token") || getEnv("BUF_TOKEN"),
     checksum: core.getInput("checksum"),
     domain: core.getInput("domain"),
+    login_retries: getNonNegativeIntegerInput("login_retries", 5),
+    login_retry_delay_seconds: getNonNegativeIntegerInput(
+      "login_retry_delay_seconds",
+      10,
+    ),
     setup_only: core.getBooleanInput("setup_only"),
     pr_comment: core.getBooleanInput("pr_comment"),
     github_actor: core.getInput("github_actor"),
@@ -105,6 +112,21 @@ export function getInputs(): Inputs {
     inputs.archive_labels.push(event.ref);
   }
   return inputs;
+}
+
+function getNonNegativeIntegerInput(name: string, defaultValue: number): number {
+  const value = core.getInput(name);
+  if (value === "") {
+    return defaultValue;
+  }
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    core.warning(
+      `Invalid value for ${name}: ${value}. Expected a non-negative integer, using default ${defaultValue}.`,
+    );
+    return defaultValue;
+  }
+  return parsed;
 }
 
 // getEnv returns the case insensitive value of the environment variable.
